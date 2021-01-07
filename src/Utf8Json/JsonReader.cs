@@ -820,7 +820,14 @@ namespace Utf8Json
             }
             else
             {
-                throw CreateParsingException("true | false");
+                try
+                {
+                    return ReadInt64() > 0;
+                }
+                catch (Exception e)
+                {
+                    throw CreateParsingException("true | false");
+                }
             }
 
             ERROR_TRUE:
@@ -1030,24 +1037,25 @@ namespace Utf8Json
 
         public void ReadNextBlock()
         {
-            var stack = 0;
+            ReadNextBlockCore(0);
+        }
 
-            AGAIN:
+        void ReadNextBlockCore(int stack)
+        {
             var token = GetCurrentJsonToken();
             switch (token)
             {
                 case JsonToken.BeginObject:
                 case JsonToken.BeginArray:
                     offset++;
-                    stack++;
-                    goto AGAIN;
+                    ReadNextBlockCore(stack + 1);
+                    break;
                 case JsonToken.EndObject:
                 case JsonToken.EndArray:
                     offset++;
-                    stack--;
-                    if (stack != 0)
+                    if ((stack - 1) != 0)
                     {
-                        goto AGAIN;
+                        ReadNextBlockCore(stack - 1);
                     }
                     break;
                 case JsonToken.True:
@@ -1065,7 +1073,7 @@ namespace Utf8Json
 
                     if (stack != 0)
                     {
-                        goto AGAIN;
+                        ReadNextBlockCore(stack);
                     }
                     break;
                 case JsonToken.None:
@@ -1104,7 +1112,31 @@ namespace Utf8Json
             var v = NumberConverter.ReadInt64(bytes, offset, out readCount);
             if (readCount == 0)
             {
-                throw CreateParsingException("Number Token");
+                try
+                {
+                    if (bytes[offset] == '\"')
+                    {
+                        v = NumberConverter.ReadInt64(bytes, offset + 1, out readCount);
+                        if (readCount > 0 && bytes[offset + readCount + 1] == '\"')
+                        {
+                            readCount += 2;
+                        }
+                        else
+                        {
+                            throw new Exception();
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    readCount = 0;
+                    v = 0;
+                }
+            }
+            if (readCount == 0)
+            {
+                if (!ReadIsNull())
+                    throw CreateParsingException("Number Token");
             }
 
             offset += readCount;
